@@ -18,7 +18,7 @@ const FEATURES = [
   {
     key: "secure",
     icon: <Shield className="w-4 h-4 text-green-400" />,
-    text: "Secure, decentralized identity — no passwords",
+    text: "Secure, decentralized identity \u2014 no passwords",
   },
 ];
 
@@ -30,7 +30,10 @@ export default function AuthPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate({ to: "/" });
+      // Return to the page the user was trying to reach, or default to /map
+      const returnTo = sessionStorage.getItem("returnTo") || "/map";
+      sessionStorage.removeItem("returnTo");
+      navigate({ to: returnTo });
     }
   }, [isAuthenticated, navigate]);
 

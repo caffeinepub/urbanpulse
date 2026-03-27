@@ -848,6 +848,7 @@ export default function Database() {
 
   useEffect(() => {
     if (!adminLoading && isAdmin === false) {
+      sessionStorage.setItem("returnTo", "/database");
       navigate({ to: "/login" });
     }
   }, [isAdmin, adminLoading, navigate]);
