@@ -34,9 +34,11 @@ import {
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  useDeleteIssue,
   useGetAdminStats,
   useGetIssues,
   useIsCallerAdmin,
+  useUpdateIssueStatus,
 } from "../hooks/useQueries";
 import type { Issue } from "../hooks/useQueries";
 
@@ -112,6 +114,12 @@ function IssueDetailModal({
   issue: Issue | null;
   onClose: () => void;
 }) {
+  const [selectedStatus, setSelectedStatus] = useState<string>(
+    issue?.status ?? "Open",
+  );
+  const updateIssueStatus = useUpdateIssueStatus();
+  const deleteIssue = useDeleteIssue();
+
   if (!issue) return null;
   return (
     <Dialog open={!!issue} onOpenChange={(open) => !open && onClose()}>
@@ -194,16 +202,94 @@ function IssueDetailModal({
             </div>
           )}
         </div>
-        <div className="flex justify-end mt-4">
-          <Button
-            onClick={onClose}
-            variant="outline"
-            className="border-white/10 text-white/70 hover:text-white hover:bg-white/5"
-            data-ocid="database.close_button"
+        <div
+          className="mt-4 space-y-3"
+          style={{
+            borderTop: "1px solid rgba(0,201,177,0.15)",
+            paddingTop: "1rem",
+          }}
+        >
+          <p
+            className="text-xs font-semibold"
+            style={{ color: "rgba(240,230,211,0.5)" }}
           >
-            <X className="w-4 h-4 mr-2" />
-            Close
-          </Button>
+            ADMIN ACTIONS
+          </p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="flex items-center gap-2 flex-1">
+              <label
+                htmlFor="status-select"
+                className="text-sm text-white/60 whitespace-nowrap"
+              >
+                Change Status:
+              </label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="flex-1 text-sm px-3 py-1.5 rounded-lg outline-none"
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(0,201,177,0.25)",
+                  color: "#f0e6d3",
+                }}
+                id="status-select"
+                data-ocid="database.select"
+              >
+                <option value="Open">Open</option>
+                <option value="InProgress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+              </select>
+              <Button
+                size="sm"
+                onClick={() => {
+                  updateIssueStatus.mutate({
+                    id: issue.id,
+                    status: selectedStatus as
+                      | "Open"
+                      | "InProgress"
+                      | "Resolved",
+                  });
+                  onClose();
+                }}
+                disabled={updateIssueStatus.isPending}
+                style={{
+                  background: "rgba(0,201,177,0.15)",
+                  border: "1px solid rgba(0,201,177,0.35)",
+                  color: "#00c9b1",
+                }}
+                data-ocid="database.save_button"
+              >
+                Save
+              </Button>
+            </div>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => {
+                if (
+                  window.confirm("Delete this issue? This cannot be undone.")
+                ) {
+                  deleteIssue.mutate(issue.id);
+                  onClose();
+                }
+              }}
+              disabled={deleteIssue.isPending}
+              data-ocid="database.delete_button"
+            >
+              Delete Issue
+            </Button>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              onClick={onClose}
+              variant="outline"
+              className="border-white/10 text-white/70 hover:text-white hover:bg-white/5"
+              data-ocid="database.close_button"
+            >
+              <X className="w-4 h-4 mr-2" />
+              Close
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -378,18 +378,6 @@ export default function LandingPage() {
         />
 
         <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-          <div
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-6"
-            style={{
-              background: "rgba(245,158,11,0.1)",
-              border: "1px solid rgba(245,158,11,0.25)",
-              color: "#f59e0b",
-            }}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            Live in 38 cities worldwide
-          </div>
-
           <h1
             className="text-5xl sm:text-6xl md:text-7xl font-extrabold leading-tight mb-6"
             style={{ fontFamily: "Syne, sans-serif" }}
