@@ -147,6 +147,7 @@ export interface backendInterface {
     _caffeineStorageRefillCashier(refillInformation: _CaffeineStorageRefillInformation | null): Promise<_CaffeineStorageRefillResult>;
     _caffeineStorageUpdateGatewayPrincipals(): Promise<void>;
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
+    resetAdminAccess(userSecret: string): Promise<boolean>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     createIssue(title: string, description: string, category: string, photoUrl: string | null, lat: number, lng: number): Promise<bigint>;
     deleteIssue(id: bigint): Promise<boolean>;
@@ -262,6 +263,22 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor._initializeAccessControlWithSecret(arg0);
+            return result;
+        }
+    }
+    async resetAdminAccess(arg0: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                // @ts-ignore
+                const result = await this.actor.resetAdminAccess(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            // @ts-ignore
+            const result = await this.actor.resetAdminAccess(arg0);
             return result;
         }
     }

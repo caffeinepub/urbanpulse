@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import Layout from "./components/Layout";
 import Admin from "./pages/Admin";
+import AdminSetup from "./pages/AdminSetup";
 import AuthPage from "./pages/AuthPage";
 import Database from "./pages/Database";
 import Feed from "./pages/Feed";
@@ -73,6 +74,12 @@ const adminRoute = createRoute({
   component: Admin,
 });
 
+const adminSetupRoute = createRoute({
+  getParentRoute: () => appRootRoute,
+  path: "/admin-setup",
+  component: AdminSetup,
+});
+
 const databaseRoute = createRoute({
   getParentRoute: () => appRootRoute,
   path: "/database",
@@ -92,6 +99,7 @@ const routeTree = rootRoute.addChildren([
     feedRoute,
     reportRoute,
     adminRoute,
+    adminSetupRoute,
     databaseRoute,
     loginRoute,
   ]),

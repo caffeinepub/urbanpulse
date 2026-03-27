@@ -47,6 +47,8 @@ export enum UserRole {
     guest = "guest"
 }
 export interface backendInterface {
+    _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
+    resetAdminAccess(userSecret: string): Promise<boolean>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     createIssue(title: string, description: string, category: string, photoUrl: string | null, lat: number, lng: number): Promise<bigint>;
     deleteIssue(id: bigint): Promise<boolean>;
