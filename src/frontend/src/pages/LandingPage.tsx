@@ -1,210 +1,203 @@
 import { Link } from "@tanstack/react-router";
-import { Github, Instagram, Menu, Twitter, X } from "lucide-react";
+import { Activity, Camera, MapPin, Menu, X } from "lucide-react";
+import { AnimatePresence, motion, useScroll, useTransform } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { useIsCallerAdmin } from "../hooks/useQueries";
 
-// ─── Custom hook: inView ────────────────────────────────────────────────────
-function useInView(threshold = 0.15) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [inView, setInView] = useState(false);
+// ─── Constants ───────────────────────────────────────────────────────────────
+const EASE = [0.25, 0.1, 0.25, 1] as const;
+const VIEWPORT = { once: true, margin: "-80px" };
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setInView(true);
-          obs.disconnect();
-        }
-      },
-      { threshold },
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [threshold]);
-
-  return { ref, inView };
-}
-
-// ─── Animated counter ───────────────────────────────────────────────────────
-function useCounter(target: number, duration = 1500, active = false) {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    if (!active) return;
-    let start: number | null = null;
-    const step = (ts: number) => {
-      if (!start) start = ts;
-      const progress = Math.min((ts - start) / duration, 1);
-      const eased = 1 - (1 - progress) ** 3;
-      setCount(Math.floor(eased * target));
-      if (progress < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }, [active, target, duration]);
-
-  return count;
-}
-
-// ─── Grain texture overlay ──────────────────────────────────────────────────
-const grainStyle: React.CSSProperties = {
-  position: "fixed",
-  top: 0,
-  left: 0,
-  width: "100%",
-  height: "100%",
-  pointerEvents: "none",
-  zIndex: 1,
-  opacity: 0.03,
-  backgroundImage:
-    "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")",
-  backgroundRepeat: "repeat",
-  backgroundSize: "128px 128px",
+// ─── Glow button helpers ─────────────────────────────────────────────────────
+const addGlow = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.boxShadow =
+    "0 0 24px rgba(245,158,11,0.6), 0 0 48px rgba(245,158,11,0.25)";
+};
+const removeGlow = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.boxShadow = "none";
+};
+const addGlowLg = (e: React.MouseEvent<HTMLElement>) => {
+  e.currentTarget.style.boxShadow =
+    "0 0 40px rgba(245,158,11,0.7), 0 0 80px rgba(245,158,11,0.3)";
 };
 
-// ─── Dot grid background ────────────────────────────────────────────────────
+// ─── Marquee ticker ───────────────────────────────────────────────────────────
+const TICKER_TEXT =
+  "LIVE MAP  ·  CITY ISSUES  ·  PHOTO REPORTS  ·  REAL TIME  ·  CIVIC TECH  ·  URBAN PULSE  ·  ";
+
+function MarqueeTicker() {
+  return (
+    <div
+      className="w-full overflow-hidden py-3 relative"
+      style={{
+        background:
+          "linear-gradient(90deg, rgba(245,158,11,0.04) 0%, rgba(245,158,11,0.08) 50%, rgba(245,158,11,0.04) 100%)",
+        borderTop: "1px solid rgba(245,158,11,0.15)",
+        borderBottom: "1px solid rgba(245,158,11,0.15)",
+      }}
+      aria-hidden="true"
+    >
+      <div
+        className="flex whitespace-nowrap"
+        style={{ animation: "marquee 28s linear infinite", width: "200%" }}
+      >
+        {[0, 1].map((i) => (
+          <span
+            key={i}
+            className="inline-block text-[10px] font-medium tracking-[0.22em] uppercase"
+            style={{ color: "rgba(245,158,11,0.5)", width: "50%" }}
+          >
+            {TICKER_TEXT.repeat(4)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Dot Grid overlay ────────────────────────────────────────────────────────
 function DotGrid() {
   return (
     <div
-      className="absolute inset-0 overflow-hidden"
-      style={{ zIndex: 0 }}
-      aria-hidden="true"
-    >
-      <svg
-        width="100%"
-        height="100%"
-        xmlns="http://www.w3.org/2000/svg"
-        role="img"
-        aria-label="City dot grid pattern"
-      >
-        <defs>
-          <pattern
-            id="dotgrid"
-            x="0"
-            y="0"
-            width="40"
-            height="40"
-            patternUnits="userSpaceOnUse"
-          >
-            <circle cx="1" cy="1" r="1" fill="rgba(0,212,255,0.12)" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#dotgrid)" />
-      </svg>
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 70% 60% at 50% 50%, transparent 0%, #0a0c10 80%)",
-        }}
-      />
-    </div>
-  );
-}
-
-// ─── Floating badge ─────────────────────────────────────────────────────────
-function FloatingBadge({
-  emoji,
-  label,
-  style,
-  animClass,
-}: {
-  emoji: string;
-  label: string;
-  style: React.CSSProperties;
-  animClass: string;
-}) {
-  return (
-    <div
-      className={`absolute hidden lg:flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium select-none ${animClass}`}
+      className="absolute inset-0 pointer-events-none"
       style={{
-        ...style,
-        background: "rgba(10,12,16,0.85)",
-        border: "1px solid rgba(245,158,11,0.35)",
-        boxShadow: "0 0 20px rgba(245,158,11,0.15), 0 8px 32px rgba(0,0,0,0.5)",
-        backdropFilter: "blur(12px)",
-        color: "#f0e6d3",
-        zIndex: 2,
+        backgroundImage:
+          "radial-gradient(circle, rgba(245,158,11,0.12) 1px, transparent 1px)",
+        backgroundSize: "32px 32px",
+        maskImage:
+          "radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%)",
+        WebkitMaskImage:
+          "radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%)",
       }}
+      aria-hidden="true"
+    />
+  );
+}
+
+// ─── Circuit Lines SVG ────────────────────────────────────────────────────────
+function CircuitLines() {
+  return (
+    <svg
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      style={{ opacity: 0.06 }}
     >
-      <span className="text-base">{emoji}</span>
-      <span>{label}</span>
-      <span
-        className="w-2 h-2 rounded-full animate-pulse"
-        style={{ background: "#f59e0b" }}
+      <defs>
+        <pattern
+          id="circuit"
+          x="0"
+          y="0"
+          width="120"
+          height="120"
+          patternUnits="userSpaceOnUse"
+        >
+          <path
+            d="M 60 0 L 60 40 M 60 40 L 90 40 M 90 40 L 90 60"
+            stroke="#f59e0b"
+            strokeWidth="0.75"
+            fill="none"
+          />
+          <path
+            d="M 0 60 L 30 60 M 30 60 L 30 90 M 30 90 L 60 90"
+            stroke="#f59e0b"
+            strokeWidth="0.75"
+            fill="none"
+          />
+          <path
+            d="M 120 60 L 90 60"
+            stroke="#f59e0b"
+            strokeWidth="0.75"
+            fill="none"
+          />
+          <circle cx="60" cy="40" r="2" fill="#f59e0b" />
+          <circle cx="30" cy="60" r="2" fill="#f59e0b" />
+          <circle cx="90" cy="60" r="2" fill="#f59e0b" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#circuit)" />
+    </svg>
+  );
+}
+
+// ─── City Skyline SVG (CTA background) ───────────────────────────────────────
+function CitySkyline() {
+  return (
+    <svg
+      className="absolute bottom-0 left-0 right-0 w-full pointer-events-none"
+      viewBox="0 0 1440 220"
+      xmlns="http://www.w3.org/2000/svg"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      style={{ opacity: 0.08 }}
+    >
+      <path
+        d="M0,220 L0,140 L60,140 L60,100 L80,100 L80,60 L100,60 L100,40 L120,40 L120,60 L140,60 L140,100 L160,100 L160,80 L180,80 L180,50 L195,50 L195,30 L210,30 L210,50 L225,50 L225,80 L240,80 L240,120 L270,120 L270,90 L290,90 L290,70 L310,70 L310,50 L330,50 L330,70 L350,70 L350,90 L380,90 L380,110 L400,110 L400,70 L415,70 L415,45 L425,45 L425,25 L435,25 L435,10 L445,10 L445,25 L455,25 L455,45 L465,45 L465,70 L490,70 L490,100 L520,100 L520,75 L540,75 L540,55 L555,55 L555,35 L570,35 L570,55 L585,55 L585,75 L610,75 L610,95 L640,95 L640,65 L660,65 L660,45 L675,45 L675,65 L690,65 L690,95 L720,95 L720,120 L750,120 L750,85 L770,85 L770,60 L785,60 L785,40 L800,40 L800,60 L815,60 L815,85 L840,85 L840,110 L870,110 L870,80 L890,80 L890,55 L905,55 L905,35 L920,35 L920,55 L935,55 L935,80 L960,80 L960,105 L990,105 L990,75 L1010,75 L1010,50 L1025,50 L1025,30 L1040,30 L1040,50 L1055,50 L1055,75 L1080,75 L1080,100 L1110,100 L1110,70 L1130,70 L1130,45 L1145,45 L1145,70 L1160,70 L1160,100 L1190,100 L1190,120 L1220,120 L1220,85 L1240,85 L1240,60 L1255,60 L1255,40 L1270,40 L1270,60 L1285,60 L1285,85 L1310,85 L1310,110 L1340,110 L1340,80 L1360,80 L1360,55 L1380,55 L1380,80 L1400,80 L1400,110 L1440,110 L1440,220 Z"
+        fill="#f59e0b"
       />
-    </div>
+    </svg>
   );
 }
 
-// ─── Section fade wrapper ───────────────────────────────────────────────────
-function FadeSection({
-  children,
-  className = "",
-  id,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  id?: string;
-}) {
-  const { ref, inView } = useInView();
+// ─── Corner bracket decoration ────────────────────────────────────────────────
+function CornerBrackets() {
+  const style = {
+    stroke: "rgba(245,158,11,0.4)",
+    strokeWidth: 1.5,
+    fill: "none",
+  };
   return (
-    <div
-      ref={ref}
-      id={id}
-      className={`transition-all duration-700 ${
-        inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-      } ${className}`}
-    >
-      {children}
-    </div>
-  );
-}
-
-// ─── Stats item ─────────────────────────────────────────────────────────────
-function StatItem({
-  target,
-  suffix,
-  label,
-  active,
-}: {
-  target: number;
-  suffix: string;
-  label: string;
-  active: boolean;
-}) {
-  const count = useCounter(target, 1500, active);
-  return (
-    <div className="flex flex-col items-center gap-1 px-6 py-4 sm:py-0">
-      <span
-        className="text-4xl sm:text-5xl font-bold tabular-nums"
-        style={{ fontFamily: "Syne, sans-serif", color: "#f59e0b" }}
+    <>
+      {/* Top-left */}
+      <svg
+        className="absolute top-6 left-6 w-8 h-8 pointer-events-none"
+        aria-hidden="true"
       >
-        {count.toLocaleString()}
-        {suffix}
-      </span>
-      <span className="text-sm text-white/50 font-medium tracking-wide uppercase">
-        {label}
-      </span>
-    </div>
+        <path d="M 30 2 L 2 2 L 2 30" {...style} />
+      </svg>
+      {/* Top-right */}
+      <svg
+        className="absolute top-6 right-6 w-8 h-8 pointer-events-none"
+        aria-hidden="true"
+      >
+        <path d="M 0 2 L 28 2 L 28 30" {...style} />
+      </svg>
+      {/* Bottom-left */}
+      <svg
+        className="absolute bottom-6 left-6 w-8 h-8 pointer-events-none"
+        aria-hidden="true"
+      >
+        <path d="M 30 28 L 2 28 L 2 0" {...style} />
+      </svg>
+      {/* Bottom-right */}
+      <svg
+        className="absolute bottom-6 right-6 w-8 h-8 pointer-events-none"
+        aria-hidden="true"
+      >
+        <path d="M 0 28 L 28 28 L 28 0" {...style} />
+      </svg>
+    </>
   );
 }
 
-// ─── Decorative pins data ───────────────────────────────────────────────────
-const decorativePins = [
-  { left: "10%", top: "15%" },
-  { left: "85%", top: "65%" },
-  { left: "45%", top: "30%" },
-  { left: "70%", top: "80%" },
-];
-
-// ─── Star rating ────────────────────────────────────────────────────────────
-const stars = [1, 2, 3, 4, 5];
-
-// ─── Main component ─────────────────────────────────────────────────────────
+// ─── Main LandingPage ───────────────────────────────────────────────────────
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { ref: statsRef, inView: statsInView } = useInView(0.3);
+  const [scrolled, setScrolled] = useState(false);
+  const { data: isAdmin } = useIsCallerAdmin();
+
+  const heroRef = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: heroRef,
+    offset: ["start start", "end start"],
+  });
+  const heroY = useTransform(scrollYProgress, [0, 1], ["0%", "-18%"]);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 50);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
@@ -213,86 +206,128 @@ export default function LandingPage() {
 
   return (
     <div
-      className="min-h-screen relative"
-      style={{
-        background: "#0a0c10",
-        fontFamily: "DM Sans, system-ui, sans-serif",
-      }}
+      className="min-h-screen"
+      style={{ background: "#0a0c10", fontFamily: "'Inter', sans-serif" }}
     >
-      {/* Grain overlay */}
-      <div style={grainStyle} aria-hidden="true" />
-
-      {/* ── NAVBAR ─────────────────────────────────────────────────────── */}
+      {/* ── NAVBAR ─────────────────────────────────────────────────── */}
       <header
-        className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 md:px-10 h-16"
+        className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 md:px-10 h-16 transition-all duration-500"
         style={{
-          background: "rgba(10,12,16,0.8)",
-          borderBottom: "1px solid rgba(255,255,255,0.05)",
-          backdropFilter: "blur(16px)",
+          background: scrolled ? "rgba(10,12,16,0.92)" : "transparent",
+          backdropFilter: scrolled ? "blur(20px)" : "none",
+          borderBottom: scrolled
+            ? "1px solid rgba(245,158,11,0.2)"
+            : "1px solid transparent",
+          boxShadow: scrolled ? "0 4px 32px rgba(245,158,11,0.06)" : "none",
         }}
         data-ocid="nav.panel"
       >
-        {/* Logo — button for accessibility */}
         <button
           type="button"
-          className="flex items-center gap-2"
+          className="flex items-center gap-2.5 group"
           onClick={() => scrollTo("hero")}
         >
-          <span className="text-lg" style={{ color: "#f59e0b" }}>
-            📍
-          </span>
+          <div className="relative">
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{ animation: "pulse-ring 2.5s ease-out infinite" }}
+            />
+            <MapPin
+              className="w-5 h-5 relative z-10 transition-all duration-300 group-hover:scale-110"
+              style={{ color: "#f59e0b" }}
+            />
+          </div>
           <span
-            className="text-xl font-bold tracking-tight"
-            style={{ fontFamily: "Syne, sans-serif", color: "#f59e0b" }}
+            className="text-base font-bold tracking-tight"
+            style={{ color: "#ffffff" }}
           >
-            UrbanPulse
+            Urban<span style={{ color: "#f59e0b" }}>Pulse</span>
           </span>
         </button>
 
-        {/* Desktop nav links */}
-        <nav className="hidden md:flex items-center gap-6">
-          {["features", "how-it-works", "community"].map((id) => (
+        <nav className="hidden md:flex items-center gap-8">
+          {[
+            {
+              label: "Features",
+              action: () => scrollTo("features"),
+              ocid: "nav.features.link",
+            },
+          ].map((item) => (
             <button
-              key={id}
+              key={item.label}
               type="button"
-              onClick={() => scrollTo(id)}
-              className="text-sm text-white/60 hover:text-white transition-colors capitalize"
-              data-ocid={`nav.${id}.link`}
+              onClick={item.action}
+              className="text-sm font-medium transition-all duration-200 hover:text-white relative group"
+              style={{ color: "rgba(255,255,255,0.45)" }}
+              data-ocid={item.ocid}
             >
-              {id === "how-it-works"
-                ? "How It Works"
-                : id.charAt(0).toUpperCase() + id.slice(1)}
+              {item.label}
+              <span
+                className="absolute -bottom-0.5 left-0 w-0 h-px group-hover:w-full transition-all duration-300"
+                style={{ background: "#f59e0b" }}
+              />
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => scrollTo("cta")}
-            className="text-sm text-white/60 hover:text-white transition-colors"
-            data-ocid="nav.get-started.link"
+          <Link
+            to="/map"
+            className="text-sm font-medium transition-all duration-200 hover:text-white relative group"
+            style={{ color: "rgba(255,255,255,0.45)" }}
+            data-ocid="nav.map.link"
           >
-            Get Started
-          </button>
+            Map
+            <span
+              className="absolute -bottom-0.5 left-0 w-0 h-px group-hover:w-full transition-all duration-300"
+              style={{ background: "#f59e0b" }}
+            />
+          </Link>
+          <Link
+            to="/report"
+            className="text-sm font-medium transition-all duration-200 hover:text-white relative group"
+            style={{ color: "rgba(255,255,255,0.45)" }}
+            data-ocid="nav.report.link"
+          >
+            Report
+            <span
+              className="absolute -bottom-0.5 left-0 w-0 h-px group-hover:w-full transition-all duration-300"
+              style={{ background: "#f59e0b" }}
+            />
+          </Link>
+          {isAdmin && (
+            <Link
+              to="/database"
+              className="text-sm font-medium px-3 py-1 rounded-md transition-all duration-200"
+              style={{
+                color: "#f59e0b",
+                border: "1px solid rgba(245,158,11,0.3)",
+                background: "rgba(245,158,11,0.06)",
+              }}
+              data-ocid="nav.admin-panel.button"
+            >
+              Admin Panel
+            </Link>
+          )}
+          <Link
+            to="/map"
+            className="px-5 py-2 rounded-full text-sm font-semibold transition-all duration-200 relative overflow-hidden group"
+            style={{ background: "#f59e0b", color: "#000000" }}
+            onMouseEnter={addGlow}
+            onMouseLeave={removeGlow}
+            data-ocid="nav.get-started.button"
+          >
+            <span className="relative z-10">Get Started</span>
+            <div
+              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              style={{
+                background: "linear-gradient(135deg, #fbbf24, #f59e0b)",
+              }}
+            />
+          </Link>
         </nav>
 
-        {/* CTA button */}
-        <Link
-          to="/report"
-          className="hidden md:inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold text-black transition-all duration-200 animate-glow-pulse-amber"
-          style={{
-            background: "#f59e0b",
-            boxShadow:
-              "0 0 20px rgba(245,158,11,0.4), 0 0 40px rgba(245,158,11,0.2)",
-            fontFamily: "Syne, sans-serif",
-          }}
-          data-ocid="nav.report.button"
-        >
-          📍 Report an Issue
-        </Link>
-
-        {/* Mobile hamburger */}
         <button
           type="button"
-          className="md:hidden text-white/70 hover:text-white"
+          className="md:hidden transition-colors duration-200 hover:text-white"
+          style={{ color: "rgba(255,255,255,0.6)" }}
           onClick={() => setMobileMenuOpen((v) => !v)}
           aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
           data-ocid="nav.menu.button"
@@ -306,605 +341,884 @@ export default function LandingPage() {
       </header>
 
       {/* Mobile menu */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed top-16 left-0 right-0 z-40 py-4 px-6 flex flex-col gap-3"
-          style={{
-            background: "rgba(10,12,16,0.97)",
-            borderBottom: "1px solid rgba(255,255,255,0.05)",
-          }}
-        >
-          {["features", "how-it-works", "community", "cta"].map((id) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => scrollTo(id)}
-              className="text-sm text-white/70 hover:text-white py-2 text-left capitalize"
-            >
-              {id === "how-it-works"
-                ? "How It Works"
-                : id === "cta"
-                  ? "Get Started"
-                  : id.charAt(0).toUpperCase() + id.slice(1)}
-            </button>
-          ))}
-          <Link
-            to="/report"
-            className="mt-2 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-black"
-            style={{ background: "#f59e0b" }}
-            data-ocid="nav.mobile.report.button"
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22, ease: EASE }}
+            className="fixed top-16 left-0 right-0 z-40 py-4 px-6 flex flex-col gap-4"
+            style={{
+              background: "rgba(10,12,16,0.98)",
+              borderBottom: "1px solid rgba(245,158,11,0.15)",
+              backdropFilter: "blur(20px)",
+            }}
           >
-            📍 Report an Issue
-          </Link>
-        </div>
-      )}
+            <button
+              type="button"
+              onClick={() => scrollTo("features")}
+              className="text-sm py-2 text-left transition-colors hover:text-white"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+            >
+              Features
+            </button>
+            <Link
+              to="/map"
+              className="text-sm py-2 transition-colors hover:text-white"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+              onClick={() => setMobileMenuOpen(false)}
+              data-ocid="nav.mobile.map.link"
+            >
+              Map
+            </Link>
+            <Link
+              to="/report"
+              className="text-sm py-2 transition-colors hover:text-white"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+              onClick={() => setMobileMenuOpen(false)}
+              data-ocid="nav.mobile.report.link"
+            >
+              Report
+            </Link>
+            {isAdmin && (
+              <Link
+                to="/database"
+                className="text-sm py-2 transition-colors"
+                style={{ color: "#f59e0b" }}
+                onClick={() => setMobileMenuOpen(false)}
+                data-ocid="nav.mobile.admin-panel.button"
+              >
+                Admin Panel
+              </Link>
+            )}
+            <Link
+              to="/map"
+              className="mt-2 inline-flex items-center justify-center px-5 py-2.5 rounded-full text-sm font-semibold"
+              style={{ background: "#f59e0b", color: "#000000" }}
+              onClick={() => setMobileMenuOpen(false)}
+              data-ocid="nav.mobile.get-started.button"
+            >
+              Get Started
+            </Link>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── HERO ───────────────────────────────────────────────────────── */}
       <section
+        ref={heroRef}
         id="hero"
-        className="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden"
+        className="min-h-screen flex items-center justify-center pt-16 overflow-hidden relative"
+        style={{ background: "#0a0c10" }}
       >
+        {/* Dot grid */}
         <DotGrid />
+        {/* Circuit lines */}
+        <CircuitLines />
 
-        {/* Floating badges */}
-        <FloatingBadge
-          emoji="🚦"
-          label="Streetlight Out"
-          style={{ top: "28%", left: "6%" }}
-          animClass="animate-float"
-        />
-        <FloatingBadge
-          emoji="🕳️"
-          label="Pothole Reported"
-          style={{ top: "40%", right: "6%" }}
-          animClass="animate-float-slow"
-        />
-        <FloatingBadge
-          emoji="🗑️"
-          label="Overflowing Bin"
-          style={{ bottom: "28%", left: "10%" }}
-          animClass="animate-float"
-        />
-
-        {/* Radial ambient glow */}
+        {/* Bottom radial amber glow */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              "radial-gradient(ellipse 60% 50% at 50% 50%, rgba(245,158,11,0.06) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 30% 60%, rgba(0,212,255,0.04) 0%, transparent 70%)",
-            zIndex: 0,
+              "radial-gradient(ellipse 70% 50% at 50% 100%, rgba(245,158,11,0.18) 0%, transparent 70%)",
           }}
           aria-hidden="true"
         />
 
-        <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-          <h1
-            className="text-5xl sm:text-6xl md:text-7xl font-extrabold leading-tight mb-6"
-            style={{ fontFamily: "Syne, sans-serif" }}
+        {/* Center top glow */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse 60% 60% at 50% 40%, rgba(245,158,11,0.07) 0%, transparent 65%)",
+          }}
+          aria-hidden="true"
+        />
+
+        {/* Scanline shimmer */}
+        <div
+          className="absolute inset-0 pointer-events-none overflow-hidden"
+          style={{
+            opacity: 0.025,
+            backgroundImage:
+              "repeating-linear-gradient(0deg, rgba(245,158,11,0.5) 0px, rgba(245,158,11,0.5) 1px, transparent 1px, transparent 4px)",
+            backgroundSize: "100% 4px",
+          }}
+          aria-hidden="true"
+        />
+
+        {/* Floating amber orb */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            width: "500px",
+            height: "500px",
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(245,158,11,0.18) 0%, transparent 70%)",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            animation: "float-orb 6s ease-in-out infinite",
+            filter: "blur(40px)",
+          }}
+          aria-hidden="true"
+        />
+
+        <motion.div
+          className="max-w-4xl mx-auto px-6 text-center relative z-10"
+          style={{ y: heroY }}
+        >
+          {/* Badge */}
+          <motion.div
+            className="inline-flex items-center gap-2 mb-8 px-4 py-1.5 rounded-full"
+            style={{
+              background: "rgba(245,158,11,0.08)",
+              border: "1px solid rgba(245,158,11,0.25)",
+            }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: EASE, delay: 0 }}
           >
-            <span className="text-white">Your City.</span>
-            <br />
-            <span className="text-white">Your Voice.</span>
-            <br />
             <span
-              style={{
-                background: "linear-gradient(90deg, #f59e0b, #fbbf24, #00d4ff)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-              }}
-            >
-              Your Fix.
-            </span>
-          </h1>
-
-          <p className="text-base sm:text-lg text-white/55 max-w-2xl mx-auto mb-10 leading-relaxed">
-            UrbanPulse lets citizens report broken streetlights, potholes,
-            overflowing bins and more — pinned live on a city heatmap for
-            everyone to see.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              to="/map"
-              className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full font-semibold text-black text-sm sm:text-base transition-all duration-200 animate-glow-pulse-amber"
+              className="w-1.5 h-1.5 rounded-full"
               style={{
                 background: "#f59e0b",
-                boxShadow:
-                  "0 0 24px rgba(245,158,11,0.5), 0 0 48px rgba(245,158,11,0.25)",
-                fontFamily: "Syne, sans-serif",
+                animation: "pulse-dot 2s ease-in-out infinite",
               }}
+            />
+            <p
+              className="text-xs font-semibold tracking-[0.2em] uppercase"
+              style={{ color: "#f59e0b" }}
+            >
+              Civic Tech Platform
+            </p>
+          </motion.div>
+
+          {/* Headline */}
+          <h1 className="leading-[0.95] mb-8">
+            <motion.span
+              className="block text-6xl md:text-8xl lg:text-9xl"
+              style={{
+                color: "#ffffff",
+                fontWeight: 200,
+                letterSpacing: "-0.03em",
+              }}
+              initial={{ opacity: 0, x: -80 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8, ease: EASE, delay: 0.1 }}
+            >
+              Your city has
+            </motion.span>
+            <motion.span
+              className="block text-6xl md:text-8xl lg:text-9xl font-black"
+              style={{
+                color: "#f59e0b",
+                letterSpacing: "-0.03em",
+                textShadow:
+                  "0 0 40px rgba(245,158,11,0.5), 0 0 80px rgba(245,158,11,0.25), 0 0 120px rgba(245,158,11,0.1)",
+              }}
+              initial={{ opacity: 0, x: 80 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8, ease: EASE, delay: 0.25 }}
+            >
+              problems.
+            </motion.span>
+          </h1>
+
+          {/* Subtext */}
+          <motion.p
+            className="text-lg max-w-lg mx-auto mb-12 leading-relaxed"
+            style={{ color: "rgba(255,255,255,0.45)" }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: EASE, delay: 0.4 }}
+          >
+            UrbanPulse lets citizens report, track, and resolve urban issues on
+            a live city map.
+          </motion.p>
+
+          {/* CTA buttons */}
+          <motion.div
+            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: EASE, delay: 0.55 }}
+          >
+            <Link
+              to="/map"
+              className="px-8 py-3.5 rounded-full font-semibold text-sm transition-all duration-300 relative overflow-hidden group"
+              style={{ background: "#f59e0b", color: "#000000" }}
+              onMouseEnter={addGlow}
+              onMouseLeave={removeGlow}
               data-ocid="hero.explore.button"
             >
-              🗺️ Explore the Map
+              <span className="relative z-10 flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
+                Explore Map
+              </span>
             </Link>
             <Link
               to="/report"
-              className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full font-semibold text-sm sm:text-base transition-all duration-200"
+              className="px-8 py-3.5 rounded-full font-semibold text-sm transition-all duration-300 group"
               style={{
-                border: "1px solid rgba(0,212,255,0.5)",
-                color: "#00d4ff",
-                boxShadow: "0 0 16px rgba(0,212,255,0.15)",
-                fontFamily: "Syne, sans-serif",
+                border: "1px solid rgba(255,255,255,0.25)",
+                color: "#ffffff",
+                background: "rgba(255,255,255,0.04)",
+                backdropFilter: "blur(8px)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.border = "1px solid rgba(245,158,11,0.5)";
+                e.currentTarget.style.color = "#f59e0b";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.border =
+                  "1px solid rgba(255,255,255,0.25)";
+                e.currentTarget.style.color = "#ffffff";
               }}
               data-ocid="hero.report.button"
             >
-              📍 Report an Issue
+              <span className="flex items-center gap-2">
+                <Camera className="w-4 h-4" />
+                Report Issue
+              </span>
             </Link>
-          </div>
-        </div>
+          </motion.div>
 
-        {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-white/20 animate-bounce">
-          <div
-            className="w-px h-8"
-            style={{
-              background:
-                "linear-gradient(to bottom, transparent, rgba(245,158,11,0.4))",
-            }}
-          />
-          <span className="text-xs tracking-widest uppercase">Scroll</span>
-        </div>
+          {/* Scroll indicator */}
+          <motion.div
+            className="mt-20 flex justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.2, duration: 0.6 }}
+          >
+            <div
+              className="flex flex-col items-center gap-1"
+              style={{ color: "rgba(245,158,11,0.4)" }}
+            >
+              <span className="text-[10px] tracking-[0.2em] uppercase">
+                Scroll
+              </span>
+              <div
+                className="w-px h-8"
+                style={{
+                  background:
+                    "linear-gradient(to bottom, rgba(245,158,11,0.5), transparent)",
+                  animation: "scroll-bar 2s ease-in-out infinite",
+                }}
+              />
+            </div>
+          </motion.div>
+        </motion.div>
       </section>
 
-      {/* ── STATS BAR ──────────────────────────────────────────────────── */}
+      {/* ── MARQUEE TICKER ──────────────────────────────────────────────── */}
+      <MarqueeTicker />
+
+      {/* ── HOW IT WORKS ─────────────────────────────────────────────── */}
       <section
-        id="stats"
-        ref={statsRef}
-        className="relative z-10 py-12"
-        style={{
-          background: "rgba(255,255,255,0.02)",
-          borderTop: "1px solid rgba(255,255,255,0.05)",
-          borderBottom: "1px solid rgba(255,255,255,0.05)",
-        }}
+        className="py-32 px-6 relative overflow-hidden"
+        style={{ background: "#070910" }}
       >
-        <div className="max-w-4xl mx-auto px-6">
-          <div className="flex flex-col sm:flex-row items-center justify-center divide-y sm:divide-y-0 sm:divide-x divide-white/10">
-            <StatItem
-              target={12400}
-              suffix="+"
-              label="Issues Reported"
-              active={statsInView}
-            />
-            <div
-              className="hidden sm:block w-px h-12 mx-2"
-              style={{
-                background:
-                  "linear-gradient(to bottom, transparent, #f59e0b, transparent)",
-              }}
-            />
-            <StatItem
-              target={38}
-              suffix=""
-              label="Cities Active"
-              active={statsInView}
-            />
-            <div
-              className="hidden sm:block w-px h-12 mx-2"
-              style={{
-                background:
-                  "linear-gradient(to bottom, transparent, #f59e0b, transparent)",
-              }}
-            />
-            <StatItem
-              target={94}
-              suffix="%"
-              label="Resolution Rate"
-              active={statsInView}
-            />
-          </div>
-        </div>
-      </section>
+        {/* Subtle top separator gradient */}
+        <div
+          className="absolute top-0 left-0 right-0 h-px"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent 0%, rgba(245,158,11,0.4) 50%, transparent 100%)",
+          }}
+          aria-hidden="true"
+        />
 
-      {/* ── HOW IT WORKS ───────────────────────────────────────────────── */}
-      <section id="how-it-works" className="relative z-10 py-24 px-6">
-        <FadeSection className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <span
-              className="text-xs font-semibold tracking-widest uppercase mb-3 block"
-              style={{ color: "#f59e0b" }}
+        <div className="max-w-5xl mx-auto relative z-10">
+          <motion.div
+            className="text-center mb-24"
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.7, ease: EASE }}
+          >
+            <p
+              className="text-xs font-semibold tracking-[0.2em] uppercase mb-4"
+              style={{ color: "rgba(245,158,11,0.6)" }}
             >
-              Simple Process
-            </span>
+              Process
+            </p>
             <h2
-              className="text-3xl sm:text-4xl md:text-5xl font-bold text-white"
-              style={{ fontFamily: "Syne, sans-serif" }}
+              className="text-3xl md:text-5xl font-bold"
+              style={{ color: "#ffffff", letterSpacing: "-0.02em" }}
             >
-              How It Works
+              How it works.
             </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          </motion.div>
+
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-3 gap-6"
+            initial="hidden"
+            whileInView="visible"
+            viewport={VIEWPORT}
+            variants={{
+              hidden: {},
+              visible: { transition: { staggerChildren: 0.15 } },
+            }}
+          >
             {[
               {
                 num: "01",
-                emoji: "📍",
-                title: "Drop a Pin",
-                desc: "Spot an issue anywhere in your city and tag its exact location on the live map.",
+                title: "Spot the issue",
+                desc: "Find a problem anywhere in your city — broken infrastructure, hazards, or neglected areas.",
+                icon: (
+                  <MapPin className="w-5 h-5" style={{ color: "#f59e0b" }} />
+                ),
               },
               {
                 num: "02",
-                emoji: "📸",
-                title: "Snap & Report",
-                desc: "Add a photo and short description so city authorities understand the issue fast.",
+                title: "Report it",
+                desc: "Pin it on the map with a photo. GPS auto-tags your exact location instantly.",
+                icon: (
+                  <Camera className="w-5 h-5" style={{ color: "#f59e0b" }} />
+                ),
               },
               {
                 num: "03",
-                emoji: "✅",
-                title: "Track & Resolve",
-                desc: "Watch the status update in real time as your neighborhood issue gets fixed.",
+                title: "Track progress",
+                desc: "Watch your report move from Open to In Progress to Resolved in real time.",
+                icon: (
+                  <Activity className="w-5 h-5" style={{ color: "#f59e0b" }} />
+                ),
               },
             ].map((step) => (
-              <div
+              <motion.div
                 key={step.num}
-                className="relative p-7 rounded-2xl group transition-all duration-300 hover:-translate-y-1"
+                className="relative rounded-2xl p-8 flex flex-col group transition-all duration-300"
                 style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(0,212,255,0.12)",
+                  background: "rgba(245,158,11,0.03)",
+                  border: "1px solid rgba(245,158,11,0.12)",
+                  backdropFilter: "blur(12px)",
                 }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.boxShadow =
-                    "0 0 24px rgba(0,212,255,0.15), 0 0 48px rgba(0,212,255,0.07)";
-                  (e.currentTarget as HTMLDivElement).style.borderColor =
-                    "rgba(0,212,255,0.3)";
+                variants={{
+                  hidden: { opacity: 0, y: 50 },
+                  visible: {
+                    opacity: 1,
+                    y: 0,
+                    transition: { duration: 0.6, ease: EASE },
+                  },
                 }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
-                  (e.currentTarget as HTMLDivElement).style.borderColor =
-                    "rgba(0,212,255,0.12)";
+                whileHover={{
+                  borderColor: "rgba(245,158,11,0.3)",
+                  background: "rgba(245,158,11,0.06)",
                 }}
               >
-                <span
-                  className="absolute top-5 right-6 text-5xl font-black opacity-10 select-none"
-                  style={{ fontFamily: "Syne, sans-serif", color: "#00d4ff" }}
+                {/* Step number big background */}
+                <div
+                  className="absolute top-4 right-4 text-8xl font-black select-none leading-none"
+                  style={{
+                    color: "rgba(245,158,11,0.07)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
                 >
                   {step.num}
+                </div>
+
+                {/* Icon badge */}
+                <div
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-xl mb-6 relative z-10"
+                  style={{
+                    background: "rgba(245,158,11,0.1)",
+                    border: "1px solid rgba(245,158,11,0.2)",
+                  }}
+                >
+                  {step.icon}
+                </div>
+
+                {/* Glowing step number label */}
+                <span
+                  className="text-xs font-bold tracking-[0.15em] uppercase mb-3 relative z-10"
+                  style={{
+                    color: "#f59e0b",
+                    textShadow: "0 0 20px rgba(245,158,11,0.5)",
+                  }}
+                >
+                  Step {step.num}
                 </span>
-                <div className="text-3xl mb-4">{step.emoji}</div>
+
                 <h3
-                  className="text-xl font-bold text-white mb-3"
-                  style={{ fontFamily: "Syne, sans-serif" }}
+                  className="text-xl font-bold mb-3 relative z-10"
+                  style={{ color: "#ffffff" }}
                 >
                   {step.title}
                 </h3>
-                <p className="text-white/50 text-sm leading-relaxed">
+                <p
+                  className="text-sm leading-relaxed relative z-10"
+                  style={{ color: "rgba(255,255,255,0.45)" }}
+                >
                   {step.desc}
                 </p>
-              </div>
+              </motion.div>
             ))}
-          </div>
-        </FadeSection>
-      </section>
-
-      {/* ── FEATURES ───────────────────────────────────────────────────── */}
-      <section id="features" className="relative z-10 py-24 px-6">
-        <FadeSection className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <span
-              className="text-xs font-semibold tracking-widest uppercase mb-3 block"
-              style={{ color: "#f59e0b" }}
-            >
-              Platform Features
-            </span>
-            <h2
-              className="text-3xl sm:text-4xl md:text-5xl font-bold text-white"
-              style={{ fontFamily: "Syne, sans-serif" }}
-            >
-              Built for Real Impact
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                emoji: "🗺️",
-                title: "Live Heatmap",
-                desc: "See issue hotspots across your neighborhood in real time. Zoom in on any block and understand the density of unresolved problems.",
-              },
-              {
-                emoji: "📷",
-                title: "Photo Reports",
-                desc: "Attach photos for faster resolution by city authorities. A picture is worth a thousand words — and a quicker fix.",
-              },
-              {
-                emoji: "🔔",
-                title: "Status Alerts",
-                desc: "Get notified the moment your reported issue is acknowledged or resolved. Stay in the loop without checking constantly.",
-              },
-            ].map((feat) => (
-              <div
-                key={feat.title}
-                className="p-7 rounded-2xl group cursor-default transition-all duration-300 hover:-translate-y-1"
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.boxShadow =
-                    "0 0 24px rgba(245,158,11,0.15), 0 0 48px rgba(245,158,11,0.07)";
-                  (e.currentTarget as HTMLDivElement).style.borderColor =
-                    "rgba(245,158,11,0.3)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
-                  (e.currentTarget as HTMLDivElement).style.borderColor =
-                    "rgba(255,255,255,0.07)";
-                }}
-              >
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-5"
-                  style={{ background: "rgba(245,158,11,0.1)" }}
-                >
-                  {feat.emoji}
-                </div>
-                <h3
-                  className="text-xl font-bold text-white mb-3"
-                  style={{ fontFamily: "Syne, sans-serif" }}
-                >
-                  {feat.title}
-                </h3>
-                <p className="text-white/50 text-sm leading-relaxed">
-                  {feat.desc}
-                </p>
-              </div>
-            ))}
-          </div>
-        </FadeSection>
-      </section>
-
-      {/* ── COMMUNITY ──────────────────────────────────────────────────── */}
-      <section
-        id="community"
-        className="relative z-10 py-24 px-6 overflow-hidden"
-      >
-        {/* Decorative map pins */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          aria-hidden="true"
-        >
-          {decorativePins.map((pin) => (
-            <div
-              key={pin.left}
-              className="absolute text-2xl opacity-5 select-none"
-              style={{ left: pin.left, top: pin.top }}
-            >
-              📍
-            </div>
-          ))}
+          </motion.div>
         </div>
-
-        <FadeSection className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <span
-              className="text-xs font-semibold tracking-widest uppercase mb-3 block"
-              style={{ color: "#f59e0b" }}
-            >
-              Community Stories
-            </span>
-            <h2
-              className="text-3xl sm:text-4xl md:text-5xl font-bold text-white"
-              style={{ fontFamily: "Syne, sans-serif" }}
-            >
-              Real People. Real Problems.
-              <br />
-              <span
-                style={{
-                  background: "linear-gradient(90deg, #f59e0b, #00d4ff)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
-                Real Change.
-              </span>
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                initials: "MT",
-                name: "Marcus T.",
-                city: "Lagos, Nigeria",
-                color: "#f59e0b",
-                quote:
-                  "I reported 3 potholes on my street and they were all fixed within 2 weeks. Incredible platform.",
-              },
-              {
-                initials: "PS",
-                name: "Priya S.",
-                city: "Mumbai, India",
-                color: "#00d4ff",
-                quote:
-                  "Finally a way to hold the city accountable. UrbanPulse made my voice heard by the right people.",
-              },
-              {
-                initials: "JO",
-                name: "James O.",
-                city: "Nairobi, Kenya",
-                color: "#a78bfa",
-                quote:
-                  "The heatmap showed our whole neighborhood was affected. 200 upvotes later, it got fixed.",
-              },
-            ].map((t) => (
-              <div
-                key={t.name}
-                className="p-7 rounded-2xl flex flex-col gap-5"
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold text-black flex-shrink-0"
-                    style={{ background: t.color }}
-                  >
-                    {t.initials}
-                  </div>
-                  <div>
-                    <div className="text-white font-semibold text-sm">
-                      {t.name}
-                    </div>
-                    <div className="text-white/40 text-xs">{t.city}</div>
-                  </div>
-                </div>
-                <p className="text-white/60 text-sm leading-relaxed italic">
-                  &ldquo;{t.quote}&rdquo;
-                </p>
-                <div className="flex gap-1">
-                  {stars.map((n) => (
-                    <span key={n} className="text-amber-400 text-xs">
-                      ★
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </FadeSection>
       </section>
 
-      {/* ── CTA BANNER ─────────────────────────────────────────────────── */}
-      <section id="cta" className="relative z-10 py-28 px-6">
-        <FadeSection>
-          <div
-            className="max-w-3xl mx-auto text-center rounded-3xl p-12 sm:p-16 relative overflow-hidden"
-            style={{
-              background:
-                "linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(0,212,255,0.04) 100%)",
-              border: "1px solid rgba(245,158,11,0.2)",
+      {/* ── FEATURES ─────────────────────────────────────────────────── */}
+      <section
+        id="features"
+        className="py-32 px-6 relative overflow-hidden"
+        style={{ background: "#060810" }}
+      >
+        {/* Top gradient separator */}
+        <div
+          className="absolute top-0 left-0 right-0 h-px"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent 0%, rgba(245,158,11,0.3) 50%, transparent 100%)",
+          }}
+          aria-hidden="true"
+        />
+
+        {/* Side ambient glow */}
+        <div
+          className="absolute left-0 top-1/2 w-64 h-64 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(245,158,11,0.08) 0%, transparent 70%)",
+            transform: "translateY(-50%)",
+            filter: "blur(40px)",
+          }}
+          aria-hidden="true"
+        />
+
+        <div className="max-w-3xl mx-auto relative z-10">
+          <motion.div
+            className="mb-16"
+            initial={{ opacity: 0, x: -50 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.7, ease: EASE }}
+          >
+            <p
+              className="text-xs font-semibold tracking-[0.2em] uppercase mb-4"
+              style={{ color: "rgba(245,158,11,0.6)" }}
+            >
+              Features
+            </p>
+            <h2
+              className="text-4xl md:text-5xl font-bold"
+              style={{ color: "#ffffff", letterSpacing: "-0.02em" }}
+            >
+              Everything you need.
+            </h2>
+          </motion.div>
+
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={VIEWPORT}
+            variants={{
+              hidden: {},
+              visible: { transition: { staggerChildren: 0.1 } },
             }}
           >
-            <div
-              className="absolute -top-20 -left-20 w-56 h-56 rounded-full blur-3xl pointer-events-none"
-              style={{ background: "rgba(245,158,11,0.1)" }}
-              aria-hidden="true"
+            {[
+              {
+                icon: <MapPin className="w-6 h-6" />,
+                title: "Live Map",
+                desc: "See all reported issues pinned on a city map in real time",
+                tag: "Real-time",
+              },
+              {
+                icon: <Camera className="w-6 h-6" />,
+                title: "Photo Reports",
+                desc: "Attach photo evidence to every issue you report",
+                tag: "Visual Proof",
+              },
+              {
+                icon: <Activity className="w-6 h-6" />,
+                title: "Status Tracking",
+                desc: "Track your report from Open to Resolved",
+                tag: "Progress",
+              },
+            ].map((feat, i) => (
+              <motion.div
+                key={feat.title}
+                variants={{
+                  hidden: { opacity: 0, x: -40 },
+                  visible: {
+                    opacity: 1,
+                    x: 0,
+                    transition: { duration: 0.5, ease: EASE },
+                  },
+                }}
+              >
+                {/* Animated border top */}
+                <motion.div
+                  style={{
+                    borderTop: "1px solid rgba(245,158,11,0.15)",
+                    transformOrigin: "left",
+                  }}
+                  variants={{
+                    hidden: { scaleX: 0 },
+                    visible: {
+                      scaleX: 1,
+                      transition: { duration: 0.6, ease: EASE },
+                    },
+                  }}
+                />
+                <div
+                  className="group flex items-center gap-5 py-6 px-4 -mx-4 rounded-xl cursor-default transition-all duration-300"
+                  style={{}}
+                  onMouseEnter={(e) => {
+                    const el = e.currentTarget;
+                    el.style.background = "rgba(245,158,11,0.04)";
+                    el.style.borderLeft = "3px solid rgba(245,158,11,0.6)";
+                    el.style.paddingLeft = "13px";
+                    el.style.boxShadow = "inset 0 0 30px rgba(245,158,11,0.04)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const el = e.currentTarget;
+                    el.style.background = "transparent";
+                    el.style.borderLeft = "none";
+                    el.style.paddingLeft = "16px";
+                    el.style.boxShadow = "none";
+                  }}
+                  data-ocid={`features.item.${i + 1}`}
+                >
+                  {/* Icon with glow ring */}
+                  <div
+                    className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:shadow-amber"
+                    style={{
+                      background: "rgba(245,158,11,0.08)",
+                      border: "1px solid rgba(245,158,11,0.18)",
+                      color: "#f59e0b",
+                    }}
+                  >
+                    {feat.icon}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <span
+                        className="font-semibold text-base"
+                        style={{ color: "#ffffff" }}
+                      >
+                        {feat.title}
+                      </span>
+                      <span
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-full tracking-wide"
+                        style={{
+                          background: "rgba(245,158,11,0.1)",
+                          color: "rgba(245,158,11,0.8)",
+                          border: "1px solid rgba(245,158,11,0.2)",
+                        }}
+                      >
+                        {feat.tag}
+                      </span>
+                    </div>
+                    <p
+                      className="text-sm"
+                      style={{ color: "rgba(255,255,255,0.4)" }}
+                    >
+                      {feat.desc}
+                    </p>
+                  </div>
+
+                  <div
+                    className="flex-shrink-0 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                    style={{ color: "rgba(245,158,11,0.6)" }}
+                  >
+                    →
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+            <motion.div
+              style={{
+                borderTop: "1px solid rgba(245,158,11,0.15)",
+                transformOrigin: "left",
+              }}
+              variants={{
+                hidden: { scaleX: 0 },
+                visible: {
+                  scaleX: 1,
+                  transition: { duration: 0.6, ease: EASE },
+                },
+              }}
             />
-            <div
-              className="absolute -bottom-20 -right-20 w-56 h-56 rounded-full blur-3xl pointer-events-none"
-              style={{ background: "rgba(0,212,255,0.08)" }}
-              aria-hidden="true"
-            />
-            <h2
-              className="text-4xl sm:text-5xl font-extrabold text-white mb-5 relative"
-              style={{ fontFamily: "Syne, sans-serif" }}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ── CTA ────────────────────────────────────────────────────────── */}
+      <section
+        id="cta"
+        className="py-40 px-6 relative overflow-hidden"
+        style={{ background: "#0a0c10" }}
+      >
+        {/* Top separator */}
+        <div
+          className="absolute top-0 left-0 right-0 h-px"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent 0%, rgba(245,158,11,0.3) 50%, transparent 100%)",
+          }}
+          aria-hidden="true"
+        />
+
+        {/* City skyline silhouette */}
+        <CitySkyline />
+
+        {/* Strong center glow */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse 50% 60% at 50% 50%, rgba(245,158,11,0.16) 0%, transparent 70%)",
+          }}
+          aria-hidden="true"
+        />
+
+        {/* Dot grid */}
+        <DotGrid />
+
+        <div className="max-w-3xl mx-auto text-center relative z-10">
+          {/* Corner brackets around text block */}
+          <div className="relative inline-block px-12 py-2">
+            <CornerBrackets />
+            <motion.p
+              className="text-xs font-semibold tracking-[0.22em] uppercase mb-6"
+              style={{ color: "rgba(245,158,11,0.6)" }}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={VIEWPORT}
+              transition={{ duration: 0.6, ease: EASE }}
             >
-              Ready to fix your city?
-            </h2>
-            <p className="text-white/55 text-base sm:text-lg mb-10 max-w-xl mx-auto relative">
-              Join thousands of citizens making their neighborhoods better, one
-              report at a time.
-            </p>
+              Join Now
+            </motion.p>
+          </div>
+
+          <h2 className="leading-tight mb-10">
+            <motion.span
+              className="block text-4xl md:text-6xl lg:text-7xl"
+              style={{
+                color: "#ffffff",
+                fontWeight: 200,
+                letterSpacing: "-0.03em",
+              }}
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={VIEWPORT}
+              transition={{ duration: 0.7, ease: EASE }}
+            >
+              Be the first to
+            </motion.span>
+            <motion.span
+              className="block text-4xl md:text-6xl lg:text-7xl font-black"
+              style={{
+                color: "#ffffff",
+                letterSpacing: "-0.03em",
+                textShadow: "0 0 60px rgba(245,158,11,0.15)",
+              }}
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={VIEWPORT}
+              transition={{ duration: 0.7, ease: EASE, delay: 0.1 }}
+            >
+              report an issue
+            </motion.span>
+            <motion.span
+              className="block text-4xl md:text-6xl lg:text-7xl font-black"
+              style={{
+                color: "#f59e0b",
+                letterSpacing: "-0.03em",
+                textShadow: "0 0 60px rgba(245,158,11,0.4)",
+              }}
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={VIEWPORT}
+              transition={{ duration: 0.7, ease: EASE, delay: 0.2 }}
+            >
+              in your city.
+            </motion.span>
+          </h2>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={VIEWPORT}
+            transition={{ duration: 0.7, ease: EASE, delay: 0.3 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+          >
+            <Link
+              to="/report"
+              className="inline-flex items-center gap-2 px-10 py-4 rounded-full font-bold text-base transition-all duration-300"
+              style={{ background: "#f59e0b", color: "#000000" }}
+              onMouseEnter={addGlowLg}
+              onMouseLeave={removeGlow}
+              data-ocid="cta.start-reporting.button"
+            >
+              <Activity className="w-4 h-4" />
+              Start Reporting
+            </Link>
             <Link
               to="/map"
-              className="relative inline-flex items-center gap-3 px-10 py-4 rounded-full font-bold text-black text-base sm:text-lg transition-all duration-200 animate-glow-pulse-amber"
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold text-sm transition-all duration-300"
               style={{
-                background: "#f59e0b",
-                boxShadow:
-                  "0 0 32px rgba(245,158,11,0.5), 0 0 64px rgba(245,158,11,0.25)",
-                fontFamily: "Syne, sans-serif",
+                border: "1px solid rgba(245,158,11,0.3)",
+                color: "rgba(245,158,11,0.8)",
+                background: "rgba(245,158,11,0.05)",
               }}
-              data-ocid="cta.get-started.button"
+              data-ocid="cta.explore-map.button"
             >
-              🚀 Get Started Free
+              <MapPin className="w-4 h-4" />
+              Explore Map
             </Link>
-          </div>
-        </FadeSection>
+          </motion.div>
+        </div>
       </section>
 
       {/* ── FOOTER ─────────────────────────────────────────────────────── */}
       <footer
-        className="relative z-10 border-t px-6 md:px-10 pt-12 pb-8"
+        className="px-6 md:px-10 py-8 relative"
         style={{
-          background: "#060810",
-          borderColor: "rgba(255,255,255,0.05)",
+          background: "#070910",
+          borderTop: "1px solid rgba(245,158,11,0.12)",
         }}
       >
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-10">
-            {/* Brand */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg" style={{ color: "#f59e0b" }}>
-                  📍
-                </span>
-                <span
-                  className="text-xl font-bold"
-                  style={{ fontFamily: "Syne, sans-serif", color: "#f59e0b" }}
-                >
-                  UrbanPulse
-                </span>
-              </div>
-              <p className="text-white/40 text-sm leading-relaxed">
-                Built by citizens, for citizens.
-              </p>
-            </div>
+        {/* Subtle footer glow */}
+        <div
+          className="absolute top-0 left-1/2 w-48 h-px"
+          style={{
+            background: "rgba(245,158,11,0.3)",
+            transform: "translateX(-50%)",
+            filter: "blur(2px)",
+          }}
+          aria-hidden="true"
+        />
 
-            {/* Links */}
-            <div className="flex flex-col gap-3">
-              <span className="text-xs font-semibold tracking-widest uppercase text-white/30">
-                Company
-              </span>
-              {["About", "Privacy", "Contact"].map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  className="text-sm text-white/50 hover:text-white transition-colors text-left"
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          <button
+            type="button"
+            className="flex items-center gap-2 transition-opacity hover:opacity-80"
+            onClick={() => scrollTo("hero")}
+          >
+            <MapPin className="w-4 h-4" style={{ color: "#f59e0b" }} />
+            <span
+              className="text-xs font-bold"
+              style={{ color: "rgba(255,255,255,0.5)" }}
+            >
+              Urban<span style={{ color: "rgba(245,158,11,0.7)" }}>Pulse</span>
+            </span>
+          </button>
 
-            {/* Social */}
-            <div className="flex flex-col gap-4">
-              <span className="text-xs font-semibold tracking-widest uppercase text-white/30">
-                Follow Us
-              </span>
-              <div className="flex items-center gap-4">
-                {[
-                  { icon: <Twitter className="w-4 h-4" />, label: "Twitter" },
-                  {
-                    icon: <Instagram className="w-4 h-4" />,
-                    label: "Instagram",
-                  },
-                  { icon: <Github className="w-4 h-4" />, label: "GitHub" },
-                ].map(({ icon, label }) => (
+          <div className="flex items-center gap-1">
+            {[{ label: "Features", onClick: () => scrollTo("features") }].map(
+              (item, i) => (
+                <span key={item.label} className="flex items-center gap-1">
+                  {i > 0 && (
+                    <span
+                      style={{ color: "rgba(245,158,11,0.3)" }}
+                      className="text-xs"
+                    >
+                      ·
+                    </span>
+                  )}
                   <button
-                    key={label}
                     type="button"
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-white/50 hover:text-white transition-all duration-200 hover:scale-110"
-                    style={{
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      background: "rgba(255,255,255,0.03)",
-                    }}
-                    aria-label={label}
+                    className="text-xs transition-colors hover:text-white"
+                    style={{ color: "rgba(255,255,255,0.3)" }}
+                    onClick={item.onClick}
                   >
-                    {icon}
+                    {item.label}
                   </button>
-                ))}
-              </div>
-            </div>
+                </span>
+              ),
+            )}
+            <span
+              style={{ color: "rgba(245,158,11,0.3)" }}
+              className="text-xs mx-1"
+            >
+              ·
+            </span>
+            <Link
+              to="/map"
+              className="text-xs transition-colors hover:text-white"
+              style={{ color: "rgba(255,255,255,0.3)" }}
+              data-ocid="footer.map.link"
+            >
+              Map
+            </Link>
+            <span
+              style={{ color: "rgba(245,158,11,0.3)" }}
+              className="text-xs mx-1"
+            >
+              ·
+            </span>
+            <Link
+              to="/report"
+              className="text-xs transition-colors hover:text-white"
+              style={{ color: "rgba(255,255,255,0.3)" }}
+              data-ocid="footer.report.link"
+            >
+              Report
+            </Link>
           </div>
 
-          {/* Bottom bar */}
           <div
-            className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-white/25"
-            style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
+            className="flex items-center gap-3 text-xs"
+            style={{ color: "rgba(255,255,255,0.25)" }}
           >
-            <span>
-              © {new Date().getFullYear()} UrbanPulse. All rights reserved.
-            </span>
+            <span>© {new Date().getFullYear()} UrbanPulse</span>
+            <span style={{ color: "rgba(245,158,11,0.3)" }}>·</span>
             <a
               href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-white/50 transition-colors"
+              className="transition-colors hover:text-white/60"
             >
               Built with ♥ using caffeine.ai
             </a>
           </div>
         </div>
       </footer>
+
+      {/* ── KEYFRAMES ─────────────────────────────────────────────────── */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+        @keyframes marquee {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+
+        @keyframes pulse-ring {
+          0%   { box-shadow: 0 0 0 0 rgba(245,158,11,0.6); opacity: 1; }
+          70%  { box-shadow: 0 0 0 10px rgba(245,158,11,0); opacity: 0; }
+          100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); opacity: 0; }
+        }
+
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.5; transform: scale(0.75); }
+        }
+
+        @keyframes float-orb {
+          0%, 100% { transform: translate(-50%, -50%) scale(1); }
+          33%       { transform: translate(-52%, -54%) scale(1.05); }
+          66%       { transform: translate(-48%, -46%) scale(0.97); }
+        }
+
+        @keyframes scanline {
+          0%   { transform: translateY(-100%); }
+          100% { transform: translateY(100vh); }
+        }
+
+        @keyframes scroll-bar {
+          0%, 100% { opacity: 0.4; transform: scaleY(1); }
+          50%       { opacity: 1;   transform: scaleY(1.2); }
+        }
+      `}</style>
     </div>
   );
 }
