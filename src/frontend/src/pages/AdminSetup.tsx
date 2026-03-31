@@ -15,9 +15,10 @@ import { useInternetIdentity } from "../hooks/useInternetIdentity";
 export default function AdminSetup() {
   const navigate = useNavigate();
   const { identity, login, loginStatus } = useInternetIdentity();
-  const { actor } = useActor();
+  const { actor, isFetching } = useActor();
   const isLoggingIn = loginStatus === "logging-in";
   const isAuthenticated = !!identity;
+  const isConnecting = isAuthenticated && (isFetching || !actor);
 
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState<"claim" | "reset" | null>(null);
@@ -29,7 +30,7 @@ export default function AdminSetup() {
       return;
     }
     if (!actor) {
-      toast.error("Not connected to backend");
+      toast.error("Still connecting to backend, please wait a moment");
       return;
     }
     setLoading("claim");
@@ -58,7 +59,7 @@ export default function AdminSetup() {
       return;
     }
     if (!actor) {
-      toast.error("Not connected to backend");
+      toast.error("Still connecting to backend, please wait a moment");
       return;
     }
     if (
@@ -136,9 +137,15 @@ export default function AdminSetup() {
                     ? "First, sign in with Internet Identity. Then enter your admin token to claim admin access."
                     : "Enter your admin token to claim or reset admin access."}
                 </p>
-                {isAuthenticated && (
+                {isAuthenticated && !isConnecting && (
                   <p className="text-xs text-green-400/80">
                     ✓ Signed in — ready to claim admin
+                  </p>
+                )}
+                {isConnecting && (
+                  <p className="text-xs text-amber-400/80 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Connecting to backend…
                   </p>
                 )}
               </div>
@@ -190,7 +197,7 @@ export default function AdminSetup() {
                     <button
                       type="button"
                       onClick={handleClaim}
-                      disabled={loading !== null}
+                      disabled={loading !== null || isConnecting}
                       className="w-full py-3 px-6 rounded-xl font-display font-bold text-base transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2 text-white"
                       style={{ background: "#FF6B35" }}
                     >
@@ -198,6 +205,11 @@ export default function AdminSetup() {
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />{" "}
                           Claiming...
+                        </>
+                      ) : isConnecting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                          Connecting...
                         </>
                       ) : (
                         <>
@@ -209,7 +221,7 @@ export default function AdminSetup() {
                     <button
                       type="button"
                       onClick={handleResetAndClaim}
-                      disabled={loading !== null}
+                      disabled={loading !== null || isConnecting}
                       className="w-full py-3 px-6 rounded-xl font-display font-bold text-sm transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
                       style={{
                         background: "rgba(239,68,68,0.15)",

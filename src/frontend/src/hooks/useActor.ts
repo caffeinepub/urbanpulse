@@ -26,13 +26,8 @@ export function useActor() {
       };
 
       const actor = await createActorWithConfig(actorOptions);
-      // Only initialize access control when a real admin token is provided
-      // (e.g. during /admin-setup flow). Do NOT call with empty string as it
-      // resets admin role checks for all users.
-      const adminToken = getSecretParameter("caffeineAdminToken");
-      if (adminToken) {
-        await actor._initializeAccessControlWithSecret(adminToken);
-      }
+      const adminToken = getSecretParameter("caffeineAdminToken") || "";
+      await actor._initializeAccessControlWithSecret(adminToken);
       return actor;
     },
     // Only refetch when identity changes

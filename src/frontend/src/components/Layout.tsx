@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
-import { useIsCallerAdmin } from "../hooks/useQueries";
 
 function NavLink({
   to,
@@ -55,7 +54,6 @@ export default function Layout() {
   const { identity, clear, login, loginStatus } = useInternetIdentity();
   const isAuthenticated = !!identity;
   const qc = useQueryClient();
-  const { data: isAdmin } = useIsCallerAdmin();
 
   const handleAuth = async () => {
     if (isAuthenticated) {
@@ -112,12 +110,12 @@ export default function Layout() {
           <NavLink to="/report" active={pathname === "/report"}>
             Report
           </NavLink>
-          {isAdmin && (
+          {isAuthenticated && (
             <NavLink to="/admin" active={pathname === "/admin"}>
               Admin
             </NavLink>
           )}
-          {isAdmin && (
+          {isAuthenticated && (
             <NavLink to="/database" active={pathname === "/database"}>
               Database
             </NavLink>
@@ -189,7 +187,7 @@ export default function Layout() {
             <Plus className="w-6 h-6 text-white" />
           </Link>
 
-          {isAdmin && (
+          {isAuthenticated && (
             <MobileNavItem
               to="/admin"
               icon={<Settings className="w-5 h-5" />}
@@ -198,7 +196,7 @@ export default function Layout() {
               ocid="mobile.admin.link"
             />
           )}
-          {isAdmin && (
+          {isAuthenticated && (
             <MobileNavItem
               to="/database"
               icon={<Database className="w-5 h-5" />}
